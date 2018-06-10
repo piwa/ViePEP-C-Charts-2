@@ -6,6 +6,7 @@ import at.ac.tuwien.infosys.viepepc.database.services.ContainerActionsService;
 import at.ac.tuwien.infosys.viepepc.database.services.DataTransferElementService;
 import at.ac.tuwien.infosys.viepepc.database.services.WorkflowService;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.ListUtils;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
 import org.jfree.chart.JFreeChart;
 import org.jfree.data.time.TimeSeries;
@@ -19,10 +20,7 @@ import java.io.*;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.text.ParseException;
-import java.util.Collections;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -50,13 +48,17 @@ public class DataLoader {
     private String suffix1;
     private String suffix2;
     private String suffix3;
+    private int min;
+    private int max;
 
-    public ChartDataHolder createGraphMain(int predefinedMax, int coreAxisSteps, int maxCoreAxisValue, String chartName, String optimizedRun, String baselineRun, String filename, String suffix1, String suffix2, String suffix3) {
+    public ChartDataHolder createGraphMain(int predefinedMax, int coreAxisSteps, int maxCoreAxisValue, String chartName, String optimizedRun, String baselineRun, String filename, String suffix1, String suffix2, String suffix3, int min, int max) {
         Statement stmt = null;
         try {
             Class.forName(databaseDriver);
             log.info("Connecting to database...");
 
+            this.min = min;
+            this.max = max;
             this.suffix1 = suffix1;
             this.suffix2 = suffix2;
             this.suffix3 = suffix3;
@@ -81,7 +83,7 @@ public class DataLoader {
         return null;
     }
 
-    public ChartDataHolder createGraph(int predefinedMax, int coreAxisSteps, int maxCoreAxisValue, String chartName, String optimizedRun, String baselineRun, String filename) throws SQLException, ParseException, IOException {
+    public ChartDataHolder createGraph(int absolutMax, int coreAxisSteps, int maxCoreAxisValue, String chartName, String optimizedRun, String baselineRun, String filename) throws SQLException, ParseException, IOException {
 
 
         int maxOptimizedDuration = 0;
@@ -91,10 +93,7 @@ public class DataLoader {
         log.info("");
         durationBaseline(baselineRun, maxBaselineDuration);
 
-
-        int absolutMax = predefinedMax;
-
-        JFreeChart chart = jFreeChartCreator.createChart(chartName, workflowArrivalDataSet, optimizedVMDataSet, new Date(absolutMax * 60 * 1000), maxCoreAxisValue, coreAxisSteps);
+        JFreeChart chart = jFreeChartCreator.createChart(chartName, workflowArrivalDataSet, optimizedVMDataSet, new Date(absolutMax * 1000), maxCoreAxisValue, coreAxisSteps);
         OutputStream out = null;
         try {
             File file = new File(filename);
@@ -110,7 +109,7 @@ public class DataLoader {
         log.info("");
 
 
-        return new ChartDataHolder(chartName, workflowArrivalDataSet, optimizedVMDataSet, new Date(absolutMax * 60 * 1000), maxCoreAxisValue, coreAxisSteps);
+        return new ChartDataHolder(chartName, workflowArrivalDataSet, optimizedVMDataSet, new Date(absolutMax * 1000), maxCoreAxisValue, coreAxisSteps);
 
     }
 
@@ -128,34 +127,41 @@ public class DataLoader {
         WorkflowDTO lastExecutedWorkflowRun2 = workflowService.getLastExecutedWorkflow(workflowsRun2);
         WorkflowDTO lastExecutedWorkflowRun3 = workflowService.getLastExecutedWorkflow(workflowsRun3);
 
-        int eval1Duration = (int) getDurationInMinutes(workflowsRun1.get(0), lastExecutedWorkflowRun1);
-        int eval2Duration = (int) getDurationInMinutes(workflowsRun2.get(0), lastExecutedWorkflowRun2);
-        int eval3Duration = (int) getDurationInMinutes(workflowsRun3.get(0), lastExecutedWorkflowRun3);
-        maxOptimizedDuration = Math.max(Math.max(eval1Duration, eval2Duration), eval3Duration);
+        int eval1Duration = (int) getDurationInSeconds(workflowsRun1.get(0), lastExecutedWorkflowRun1);
+        int eval2Duration = (int) getDurationInSeconds(workflowsRun2.get(0), lastExecutedWorkflowRun2);
+        int eval3Duration = (int) getDurationInSeconds(workflowsRun3.get(0), lastExecutedWorkflowRun3);
+//        maxOptimizedDuration = Math.max(Math.max(eval1Duration, eval2Duration), eval3Duration);
 
-        calculateStandardDeviation("Execution duration with optimization", eval1Duration, eval2Duration, eval3Duration);
+        List<Long> processExecutionDurations = new ArrayList<>();
+        workflowsRun1.forEach(dto -> processExecutionDurations.add(getDurationInMinutes(dto, dto)));
+        workflowsRun2.forEach(dto -> processExecutionDurations.add(getDurationInMinutes(dto, dto)));
+        workflowsRun3.forEach(dto -> processExecutionDurations.add(getDurationInMinutes(dto, dto)));
+
+        calculateStandardDeviation("Execution duration with optimization", processExecutionDurations);
 
 
-        List<ContainerActionsDTO> containerActionsRun1 = containerActionsService.getContainerActionsDTOs(String.format(optimizedRun, suffix1), workflowsRun1.get(0).getArrivedAt(), eval1Duration, false);
-        List<ContainerActionsDTO> containerActionsRun2 = containerActionsService.getContainerActionsDTOs(String.format(optimizedRun, suffix2), workflowsRun2.get(0).getArrivedAt(), eval2Duration, false);
-        List<ContainerActionsDTO> containerActionsRun3 = containerActionsService.getContainerActionsDTOs(String.format(optimizedRun, suffix3), workflowsRun3.get(0).getArrivedAt(), eval3Duration, false);
+        List<ContainerActionsDTO> containerActionsRun1 = containerActionsService.getContainerActionsDTOs(String.format(optimizedRun, suffix1), workflowsRun1.get(0).getArrivedAt(), eval1Duration, false, min, max);
+        List<ContainerActionsDTO> containerActionsRun2 = containerActionsService.getContainerActionsDTOs(String.format(optimizedRun, suffix2), workflowsRun2.get(0).getArrivedAt(), eval2Duration, false, min, max);
+        List<ContainerActionsDTO> containerActionsRun3 = containerActionsService.getContainerActionsDTOs(String.format(optimizedRun, suffix3), workflowsRun3.get(0).getArrivedAt(), eval3Duration, false, min, max);
         Collections.sort(containerActionsRun1, Comparator.comparing(ContainerActionsDTO::getDate));
         Collections.sort(containerActionsRun2, Comparator.comparing(ContainerActionsDTO::getDate));
         Collections.sort(containerActionsRun3, Comparator.comparing(ContainerActionsDTO::getDate));
 
-        int minute1 = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsRun1.get(containerActionsRun1.size() - 1).getDate().getTime());
-        int minute2 = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsRun2.get(containerActionsRun2.size() - 1).getDate().getTime());
-        int minute3 = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsRun3.get(containerActionsRun3.size() - 1).getDate().getTime());
-        maxOptimizedDuration = Math.max(minute1, Math.max(minute2, Math.max(minute3, maxOptimizedDuration)));
+        int seconds1 = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsRun1.get(containerActionsRun1.size() - 1).getDate().getTime());
+        int seconds2 = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsRun2.get(containerActionsRun2.size() - 1).getDate().getTime());
+        int seconds3 = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsRun3.get(containerActionsRun3.size() - 1).getDate().getTime());
+        maxOptimizedDuration = Math.max(seconds1, Math.max(seconds2, Math.max(seconds3, maxOptimizedDuration)));
 
         workflowArrivalDataSet = jFreeChartCreator.createArrivalDataSet(workflowArrivals);
-        optimizedVMDataSet = jFreeChartCreator.createContainerDataSet("Container", containerActionsRun1, containerActionsRun2, containerActionsRun3);
+        optimizedVMDataSet = jFreeChartCreator.createContainerDataSet("GeCo", containerActionsRun1, containerActionsRun2, containerActionsRun3);
 
         double[] coreUsage1 = containerActionsService.getCoreUsage(String.format(optimizedRun, suffix1), workflowsRun1.get(0), lastExecutedWorkflowRun1, false);
         double[] coreUsage2 = containerActionsService.getCoreUsage(String.format(optimizedRun, suffix2), workflowsRun2.get(0), lastExecutedWorkflowRun2, false);
         double[] coreUsage3 = containerActionsService.getCoreUsage(String.format(optimizedRun, suffix3), workflowsRun3.get(0), lastExecutedWorkflowRun3, false);
         calculateStandardDeviation("Intern core usage", coreUsage1[0], coreUsage2[0], coreUsage3[0]);
         calculateStandardDeviation("Extern core usage", coreUsage1[1], coreUsage2[1], coreUsage3[1]);
+        calculateStandardDeviation("Leasing duration", coreUsage1[2], coreUsage2[2], coreUsage3[2]);
+
 
         double[] penaltyPoints1 = penalty(workflowsRun1, suffix1);
         double[] penaltyPoints2 = penalty(workflowsRun2, suffix2);
@@ -188,25 +194,32 @@ public class DataLoader {
         WorkflowDTO lastExecutedWorkflowRun2 = workflowService.getLastExecutedWorkflow(workflowsRun2);
         WorkflowDTO lastExecutedWorkflowRun3 = workflowService.getLastExecutedWorkflow(workflowsRun3);
 
-        int eval1Duration = (int) getDurationInMinutes(workflowsRun1.get(0), lastExecutedWorkflowRun1);
-        int eval2Duration = (int) getDurationInMinutes(workflowsRun2.get(0), lastExecutedWorkflowRun2);
-        int eval3Duration = (int) getDurationInMinutes(workflowsRun3.get(0), lastExecutedWorkflowRun3);
-        maxBaselineDuration = (int) Math.max(Math.max(Math.max(eval1Duration, eval2Duration), eval3Duration), 0);
+        int eval1Duration = (int) getDurationInSeconds(workflowsRun1.get(0), lastExecutedWorkflowRun1);
+        int eval2Duration = (int) getDurationInSeconds(workflowsRun2.get(0), lastExecutedWorkflowRun2);
+        int eval3Duration = (int) getDurationInSeconds(workflowsRun3.get(0), lastExecutedWorkflowRun3);
+//        maxBaselineDuration = (int) Math.max(Math.max(Math.max(eval1Duration, eval2Duration), eval3Duration), 0);
 //                maxBaselineDuration = (int) Math.ceil(maxBaselineDuration / 5.0) * 5;
-        calculateStandardDeviation("Execution duration baseline run", eval1Duration, eval2Duration, eval3Duration);
+//        calculateStandardDeviation("Leasing duration baseline run", eval1Duration, eval2Duration, eval3Duration);
 
-        List<ContainerActionsDTO> containerActionsRun1 = containerActionsService.getContainerActionsDTOs(String.format(baselineRun, suffix1), workflowsRun1.get(0).getArrivedAt(), eval1Duration, true);
-        List<ContainerActionsDTO> containerActionsRun2 = containerActionsService.getContainerActionsDTOs(String.format(baselineRun, suffix2), workflowsRun2.get(0).getArrivedAt(), eval2Duration, true);
-        List<ContainerActionsDTO> containerActionsRun3 = containerActionsService.getContainerActionsDTOs(String.format(baselineRun, suffix3), workflowsRun3.get(0).getArrivedAt(), eval3Duration, true);
+        List<Long> processExecutionDurations = new ArrayList<>();
+        workflowsRun1.forEach(dto -> processExecutionDurations.add(getDurationInMinutes(dto, dto)));
+        workflowsRun2.forEach(dto -> processExecutionDurations.add(getDurationInMinutes(dto, dto)));
+        workflowsRun3.forEach(dto -> processExecutionDurations.add(getDurationInMinutes(dto, dto)));
+
+        calculateStandardDeviation("Execution duration with baseline", processExecutionDurations);
+
+        List<ContainerActionsDTO> containerActionsRun1 = containerActionsService.getContainerActionsDTOs(String.format(baselineRun, suffix1), workflowsRun1.get(0).getArrivedAt(), eval1Duration, true, min, max);
+        List<ContainerActionsDTO> containerActionsRun2 = containerActionsService.getContainerActionsDTOs(String.format(baselineRun, suffix2), workflowsRun2.get(0).getArrivedAt(), eval2Duration, true, min, max);
+        List<ContainerActionsDTO> containerActionsRun3 = containerActionsService.getContainerActionsDTOs(String.format(baselineRun, suffix3), workflowsRun3.get(0).getArrivedAt(), eval3Duration, true, min, max);
 
         Collections.sort(containerActionsRun1, Comparator.comparing(ContainerActionsDTO::getDate));
         Collections.sort(containerActionsRun2, Comparator.comparing(ContainerActionsDTO::getDate));
         Collections.sort(containerActionsRun3, Comparator.comparing(ContainerActionsDTO::getDate));
 
-        int minute1 = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsRun1.get(containerActionsRun1.size() - 1).getDate().getTime());
-        int minute2 = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsRun2.get(containerActionsRun2.size() - 1).getDate().getTime());
-        int minute3 = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsRun3.get(containerActionsRun3.size() - 1).getDate().getTime());
-        maxBaselineDuration = Math.max(minute1, Math.max(minute2, Math.max(minute3, maxBaselineDuration)));
+        int seconds1 = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsRun1.get(containerActionsRun1.size() - 1).getDate().getTime());
+        int seconds2 = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsRun2.get(containerActionsRun2.size() - 1).getDate().getTime());
+        int seconds3 = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsRun3.get(containerActionsRun3.size() - 1).getDate().getTime());
+        maxBaselineDuration = Math.max(seconds1, Math.max(seconds2, Math.max(seconds3, maxBaselineDuration)));
         maxBaselineDuration = (int) Math.ceil(maxBaselineDuration / 5.0) * 5;
 
 //                workflowArrivalDataSet = jFreeChartCreator.createArrivalDataSet(workflowsRun1);
@@ -220,6 +233,7 @@ public class DataLoader {
         double[] coreUsage3 = containerActionsService.getCoreUsage(String.format(baselineRun, suffix3), workflowsRun3.get(0), lastExecutedWorkflowRun3, true);
         calculateStandardDeviation("Intern Core usage", coreUsage1[0], coreUsage2[0], coreUsage3[0]);
         calculateStandardDeviation("Extern Core usage", coreUsage1[1], coreUsage2[1], coreUsage3[1]);
+        calculateStandardDeviation("Leasing duration", coreUsage1[2], coreUsage2[2], coreUsage3[2]);
 
         double[] penaltyPoints1 = penalty(workflowsRun1, suffix1);
         double[] penaltyPoints2 = penalty(workflowsRun2, suffix2);
@@ -257,11 +271,37 @@ public class DataLoader {
         }
     }
 
+    private static void calculateStandardDeviation(String field, List<Long> values) {
+        DescriptiveStatistics stats = new DescriptiveStatistics();
+
+        for (double value : values) {
+            stats.addValue(value);
+        }
+
+        // Compute some statistics
+        double mean = stats.getMean();
+        double std = stats.getStandardDeviation();
+
+        if(field.equals("Penalty percent")) {
+            log.info(field + ": average" + " mean: " + (100-mean) + " (std: " + std + ")");
+        }
+        else {
+            log.info(field + ": average" + " mean: " + (mean) + " (std: " + std + ")");
+        }
+    }
+
+    private long getDurationInSeconds(WorkflowDTO workflowDTO, WorkflowDTO lastExecutedWorkflowRun1) {
+        long start = workflowDTO.getArrivedAt().getTime();
+        long end = lastExecutedWorkflowRun1.getFinishedAt().getTime();
+        return TimeUnit.MILLISECONDS.toSeconds(end - start);
+    }
+
     private long getDurationInMinutes(WorkflowDTO workflowDTO, WorkflowDTO lastExecutedWorkflowRun1) {
         long start = workflowDTO.getArrivedAt().getTime();
         long end = lastExecutedWorkflowRun1.getFinishedAt().getTime();
         return TimeUnit.MILLISECONDS.toMinutes(end - start);
     }
+
 
 
     public double[] penalty(List<WorkflowDTO> workflowsRun, String executionCount) throws SQLException {

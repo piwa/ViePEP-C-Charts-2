@@ -115,7 +115,7 @@ public class JFreeChartCreator {
             final NumberAxis rangeAxis = (NumberAxis) plot.getRangeAxis(1);
             rangeAxis.setStandardTickUnits(NumberAxis.createIntegerTickUnits());
             rangeAxis.setAutoRangeIncludesZero(true);
-            rangeAxis.setRange(0, 10);
+            rangeAxis.setRange(0, 8);
             NumberTickUnit unit = new NumberTickUnit(2);
             rangeAxis.setTickUnit(unit);
         }
@@ -126,14 +126,14 @@ public class JFreeChartCreator {
             axis.setTickLabelFont(defaultFont);
             axis.setDateFormatOverride(new CustomSimpleDateFormat("mm"));
             axis.setMaximumDate(maxDate);
-            axis.setTickUnit(new DateTickUnit(DateTickUnitType.MINUTE, 40));
+            axis.setTickUnit(new DateTickUnit(DateTickUnitType.MINUTE, 20));
 
             final XYLineAndShapeRenderer renderer = new XYLineAndShapeRenderer();
             renderer.setSeriesLinesVisible(0, false);
             renderer.setSeriesShapesVisible(0, true);
             plot.setRenderer(1, renderer);
             plot.getRendererForDataset(plot.getDataset(1)).setSeriesPaint(0, Color.red);
-            plot.getRendererForDataset(plot.getDataset(1)).setBaseStroke(new BasicStroke(2f));
+            plot.getRendererForDataset(plot.getDataset(1)).setBaseStroke(new BasicStroke(1f));
             plot.getRendererForDataset(plot.getDataset(1)).setSeriesShape(0, ShapeUtilities.createRegularCross(2f, 0.2f));
         }
 
@@ -158,9 +158,9 @@ public class JFreeChartCreator {
 
             XYItemRenderer rendererForDataset = plot.getRendererForDataset(plot.getDataset(0));
             rendererForDataset.setSeriesPaint(0, Color.blue);
-            rendererForDataset.setSeriesStroke(0, new BasicStroke(2.0f));
+            rendererForDataset.setSeriesStroke(0, new BasicStroke(1.0f));
             rendererForDataset.setSeriesPaint(1, Color.DARK_GRAY);
-            rendererForDataset.setSeriesStroke(1, new BasicStroke(2.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1.0f, new float[]{4.0f}, 1.0f));
+            rendererForDataset.setSeriesStroke(1, new BasicStroke(1.0f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND, 1.0f, new float[]{4.0f}, 1.0f));
         }
 
 //        plot.getDomainAxis().setLabelFont( plot.getRangeAxis(0).getLabelFont() );
@@ -181,7 +181,8 @@ public class JFreeChartCreator {
 
             int hour = greg.get(Calendar.HOUR_OF_DAY);
             int minute = greg.get(Calendar.MINUTE);
-            int currentMinuteOfDay = ((hour - 9) * 60) + minute;
+            int second = greg.get(Calendar.SECOND);
+            int currentMinuteOfDay = ((hour - 1) * 60) + minute + second;
             format = new StringBuffer(String.valueOf(currentMinuteOfDay));
 
             return format;
@@ -215,7 +216,7 @@ public class JFreeChartCreator {
             List<WorkflowDTO> workflowDTOs = arrivalSorted.get(date);
             date = new Date(date.getTime() - min.getTime());
 
-            RegularTimePeriod period = new Minute(date);
+            RegularTimePeriod period = new Second(date);
             TimeSeriesDataItem timeSeriesDataItem = new TimeSeriesDataItem(period, workflowDTOs.size());
             series1.addOrUpdate(timeSeriesDataItem);
             x++;
@@ -243,46 +244,44 @@ public class JFreeChartCreator {
 
         Calendar dateStart = new GregorianCalendar();
         dateStart.setTime(first.getDate());
-        dateStart.set(Calendar.MINUTE, 0);
+        dateStart.set(Calendar.SECOND, 0);
 
         Calendar dateEnd = new GregorianCalendar();
         dateEnd.setTime(last.getDate());
 
         Map<Integer, List<ContainerActionsDTO>> values = new TreeMap<>();
-        long maxMinutes = TimeUnit.MILLISECONDS.toMinutes(dateEnd.getTimeInMillis() - dateStart.getTimeInMillis());
+        long maxSeconds = TimeUnit.MILLISECONDS.toSeconds(dateEnd.getTimeInMillis() - dateStart.getTimeInMillis());
 
-//        maxMinutes = (long) (Math.ceil(maxMinutes / 5.0) * 5);
-
-        for (int i = 0; i <= maxMinutes; i++) {
+        for (int i = 0; i <= maxSeconds; i++) {
             values.put(i, new ArrayList<ContainerActionsDTO>());
         }
 
         for (ContainerActionsDTO containerActionsDTO : evaluation1) {
-            int minutes = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsDTO.getDate().getTime() - dateStart.getTimeInMillis());
-            if (values.get(minutes) != null) {
-                values.get(minutes).add(containerActionsDTO);
+            int seconds = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsDTO.getDate().getTime() - dateStart.getTimeInMillis());
+            if (values.get(seconds) != null) {
+                values.get(seconds).add(containerActionsDTO);
             }
         }
         for (ContainerActionsDTO containerActionsDTO : evaluation2) {
-            int minutes = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsDTO.getDate().getTime() - dateStart.getTimeInMillis());
-            if (values.get(minutes) != null) {
-                values.get(minutes).add(containerActionsDTO);
+            int seconds = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsDTO.getDate().getTime() - dateStart.getTimeInMillis());
+            if (values.get(seconds) != null) {
+                values.get(seconds).add(containerActionsDTO);
             }
         }
         for (ContainerActionsDTO containerActionsDTO : evaluation3) {
-            int minutes = (int) TimeUnit.MILLISECONDS.toMinutes(containerActionsDTO.getDate().getTime() - dateStart.getTimeInMillis());
-            if (values.get(minutes) != null) {
-                values.get(minutes).add(containerActionsDTO);
+            int seconds = (int) TimeUnit.MILLISECONDS.toSeconds(containerActionsDTO.getDate().getTime() - dateStart.getTimeInMillis());
+            if (values.get(seconds) != null) {
+                values.get(seconds).add(containerActionsDTO);
             }
         }
 
 
         double lastAverage = 0;
-        for (Integer minute : values.keySet()) {
-            String output = "" + minute + " ";
+        for (Integer second : values.keySet()) {
+            String output = "" + second + " ";
             double sum = 0;
             Date date = null;
-            for (ContainerActionsDTO dto : values.get(minute)) {
+            for (ContainerActionsDTO dto : values.get(second)) {
                 output += " " + dto.getCoreAmount();
                 sum += dto.getCoreAmount();
                 date = dto.getDate();
@@ -296,17 +295,17 @@ public class JFreeChartCreator {
 
 
         for (ContainerActionsDTO containerActionsDTO : evaluation1) {
-            RegularTimePeriod period = new Minute(containerActionsDTO.getDate());
+            RegularTimePeriod period = new Second(containerActionsDTO.getDate());
             TimeSeriesDataItem timeSeriesDataItem = new TimeSeriesDataItem(period, containerActionsDTO.getCoreAmount());
             series1.add(timeSeriesDataItem);
         }
         for (ContainerActionsDTO containerActionsDTO : evaluation2) {
-            RegularTimePeriod period = new Minute(containerActionsDTO.getDate());
+            RegularTimePeriod period = new Second(containerActionsDTO.getDate());
             TimeSeriesDataItem timeSeriesDataItem = new TimeSeriesDataItem(period, containerActionsDTO.getCoreAmount());
             series2.add(timeSeriesDataItem);
         }
         for (ContainerActionsDTO containerActionsDTO : evaluation3) {
-            RegularTimePeriod period = new Minute(containerActionsDTO.getDate());
+            RegularTimePeriod period = new Second(containerActionsDTO.getDate());
             TimeSeriesDataItem timeSeriesDataItem = new TimeSeriesDataItem(period, containerActionsDTO.getCoreAmount());
             series3.add(timeSeriesDataItem);
         }
